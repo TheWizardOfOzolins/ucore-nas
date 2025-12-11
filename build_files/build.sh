@@ -22,3 +22,8 @@ dnf5 install -y tmux targetcli vim
 #### Example for enabling a System Unit File
 
 systemctl enable podman.socket
+# Get iSCSI services running at boot
+systemctl enable iscsid
+systemctl enable target
+#Disable annoying motd service
+systemctl disable coreos-container-signing-migration-motd.service
