@@ -2,7 +2,9 @@
 Description=Materia - GitOps for Quadlets
 Wants=network-online.target
 After=network-online.target
-# Secrets are provisioned per-host, never baked into the image
+# Config and secrets are provisioned per-host, never baked into the image
+# (see /usr/share/materia/config.toml.example)
+ConditionPathExists=/etc/materia/config.toml
 ConditionPathExists=/etc/materia/materia_key
 ConditionPathExists=/etc/materia/known_hosts
 ConditionPathExists=/etc/materia/key.txt

@@ -4,7 +4,7 @@ set -ouex pipefail
 
 ### Copy static files (systemd units, configs) into the image
 cp -a /ctx/system_files/. /
-chmod 0700 /etc/materia
+install -d -m 0700 /etc/materia
 
 ### Install packages
 dnf5 install -y tmux targetcli vim tree
