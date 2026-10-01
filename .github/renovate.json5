@@ -6,6 +6,18 @@
 
   "rebaseWhen": "never",
 
+  // Bumps versions annotated with `# renovate: datasource=... depName=...` in build scripts.
+  // Checksums are not updated automatically; the PR build fails until they are.
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^build_files/.+\\.sh$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+[A-Z_]+=(?<currentValue>\\S+)",
+      ],
+    },
+  ],
+
   "packageRules": [
     {
       "automerge": true,

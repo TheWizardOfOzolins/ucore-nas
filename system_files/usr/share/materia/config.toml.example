@@ -1,0 +1,12 @@
+[source]
+kind = "git"
+url  = "ssh://git@<your-forgejo>/<user>/<materia-repo>.git"
+
+[git]
+branch      = "main"
+private_key = "/etc/materia/materia_key"
+knownhosts  = "/etc/materia/known_hosts"
+
+[age]
+keyfile  = "/etc/materia/key.txt"
+base_dir = "attributes"
