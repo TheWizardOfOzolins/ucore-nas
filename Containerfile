@@ -1,11 +1,15 @@
+# Image variant: hci or minimal (selects the uCore base image and which variant layer build.sh applies)
+ARG VARIANT=hci
+
 # Allow build scripts to be referenced without being copied into the final image
 FROM scratch AS ctx
 COPY build_files /
 COPY system_files /system_files
-COPY cosign.pub /system_files/etc/pki/containers/ucore-nas.pub
+COPY cosign.pub /system_files/common/etc/pki/containers/ucore-nas.pub
 
 # Base Image
-FROM ghcr.io/ublue-os/ucore-hci:stable
+FROM ghcr.io/ublue-os/ucore-${VARIANT}:stable
+ARG VARIANT
 
 ## Other possible base images include:
 # FROM ghcr.io/ublue-os/bazzite:latest
@@ -17,14 +21,15 @@ FROM ghcr.io/ublue-os/ucore-hci:stable
 # CentOS base images: quay.io/centos-bootc/centos-bootc:stream10
 
 ### MODIFICATIONS
-## make modifications desired in your image and install packages by modifying the build.sh script
-## the following RUN directive does all the things required to run "build.sh" as recommended.
+## build.sh applies the shared layer, then the variant layer:
+##   build_files/common/*.sh + system_files/common/     -> every image
+##   build_files/${VARIANT}/*.sh + system_files/${VARIANT}/ -> that image only
 
 RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     --mount=type=cache,dst=/var/cache \
     --mount=type=cache,dst=/var/log \
     --mount=type=tmpfs,dst=/tmp \
-    /ctx/build.sh && \
+    VARIANT=${VARIANT} /ctx/build.sh && \
     ostree container commit
     
 ### LINTING

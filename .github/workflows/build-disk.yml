@@ -9,6 +9,14 @@ on:
         required: false
         default: false
         type: boolean
+      image-name:
+        description: "Image variant"
+        required: true
+        default: ucore-nas
+        type: choice
+        options:
+          - ucore-nas
+          - ucore-nas-minimal
       platform:
         required: true
         default: amd64
@@ -25,10 +33,10 @@ on:
       - '.github/workflows/build-disk.yml'
 
 env:
-  IMAGE_NAME: ${{ github.event.repository.name }} # output of build.yml, keep in sync
+  IMAGE_NAME: ${{ inputs.image-name || 'ucore-nas' }} # output of build.yml, keep in sync
   IMAGE_REGISTRY: "ghcr.io/${{ github.repository_owner }}"  # do not edit
   DEFAULT_TAG: "latest"
-  BIB_IMAGE: "quay.io/centos-bootc/bootc-image-builder:latest"
+  BIB_IMAGE: "ghcr.io/osbuild/bootc-image-builder:v85.0.0"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
@@ -77,6 +85,12 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5
+
+      - name: Point installer at the selected image
+        if: matrix.disk-type == 'anaconda-iso'
+        run: |
+          sed -i "s#ghcr.io/thewizardofozolins/ucore-nas:latest#${IMAGE_REGISTRY}/${IMAGE_NAME}:${DEFAULT_TAG}#" ./disk_config/iso.toml
+          grep 'bootc switch' ./disk_config/iso.toml
 
       - name: Build disk images
         id: build

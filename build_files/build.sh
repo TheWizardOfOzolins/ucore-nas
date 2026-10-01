@@ -1,45 +1,31 @@
 #!/bin/bash
+# Build orchestrator. Runs the shared layer first, then the variant layer:
+#   1. copy system_files/common/ then system_files/${VARIANT}/ into /
+#   2. run build_files/common/*.sh then build_files/${VARIANT}/*.sh (in name order)
+# Add shared changes under common/, image-specific ones under hci/ or minimal/.
 
 set -ouex pipefail
 
-### Copy static files (systemd units, configs) into the image
-cp -a /ctx/system_files/. /
-install -d -m 0700 /etc/materia
+VARIANT=${VARIANT:?VARIANT must be set (hci or minimal)}
+CTX=/ctx
 
-### Require updates to this image to be signed with cosign.pub
-POLICY_TMP=$(mktemp)
-jq '.transports.docker["ghcr.io/thewizardofozolins/ucore-nas"] = [{
-      "type": "sigstoreSigned",
-      "keyPath": "/etc/pki/containers/ucore-nas.pub",
-      "signedIdentity": {"type": "matchRepository"}
-    }]' /etc/containers/policy.json > "$POLICY_TMP"
-install -m 0644 "$POLICY_TMP" /etc/containers/policy.json
+if [[ ! -d "${CTX}/${VARIANT}" ]]; then
+  echo "Unknown variant: ${VARIANT}" >&2
+  exit 1
+fi
 
-### Install packages
-dnf5 install -y tmux targetcli vim tree
+for layer in common "${VARIANT}"; do
+  ### Copy static files (systemd units, configs) into the image
+  if [[ -d "${CTX}/system_files/${layer}" ]]; then
+    cp -a "${CTX}/system_files/${layer}/." /
+    rm -f /.gitkeep
+  fi
 
-# Enable Podman socket
-systemctl enable podman.socket
-
-# Get iSCSI services running at boot
-systemctl enable iscsid
-systemctl enable target
-
-# Disable annoying motd service
-systemctl disable coreos-container-signing-migration-motd.service
-
-# Set up Materia
-# renovate: datasource=github-releases depName=stryan/materia
-MATERIA_VERSION=v0.7.2
-case "$(uname -m)" in
-  x86_64)  MATERIA_ARCH=amd64; MATERIA_SHA256=5d039e1b0727fda93167b68aafd038220c06acd61820d267641e964f4d614da0 ;;
-  aarch64) MATERIA_ARCH=arm64; MATERIA_SHA256=19192e31c9a4825bf4ef5224dea076f3a47ffbbe919c667e8a7150b16936b841 ;;
-  *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
-esac
-
-curl -fsSL -o /usr/bin/materia \
-  "https://github.com/stryan/materia/releases/download/${MATERIA_VERSION}/materia-${MATERIA_ARCH}"
-echo "${MATERIA_SHA256}  /usr/bin/materia" | sha256sum -c -
-chmod 0755 /usr/bin/materia
-
-systemctl enable materia-update.timer
+  ### Run build steps
+  for script in "${CTX}/${layer}"/*.sh; do
+    [[ -e "$script" ]] || continue
+    echo "::group:: ${layer}/$(basename "$script")"
+    bash "$script"
+    echo "::endgroup::"
+  done
+done
