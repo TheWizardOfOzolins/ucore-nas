@@ -33,6 +33,18 @@ After step 2, `bootc upgrade` and the automatic updates from `rpm-ostreed-automa
 
 For fresh installs, see [Disk images](#disk-images).
 
+### Updates
+
+uCore's `rpm-ostreed-automatic.timer` checks for a new image daily (`AutomaticUpdatePolicy=stage`). It downloads and stages the update but never reboots; the update is applied on the next manual reboot. To check status or update by hand:
+
+```bash
+rpm-ostree status          # shows a staged deployment, if any
+sudo bootc upgrade         # fetch + stage now
+sudo systemctl reboot      # boot into it
+```
+
+Automatic reboots (`bootc-fetch-apply-updates.timer`) are deliberately left disabled so that iSCSI clients aren't disconnected unexpectedly.
+
 ## Materia setup
 
 The image ships Materia but **no config or secrets**. The image is public, so the Git source and keys are provisioned per host. `materia-update.service` doesn't run until all of these exist:
