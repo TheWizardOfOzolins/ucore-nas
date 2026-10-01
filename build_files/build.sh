@@ -6,6 +6,15 @@ set -ouex pipefail
 cp -a /ctx/system_files/. /
 install -d -m 0700 /etc/materia
 
+### Require updates to this image to be signed with cosign.pub
+POLICY_TMP=$(mktemp)
+jq '.transports.docker["ghcr.io/thewizardofozolins/ucore-nas"] = [{
+      "type": "sigstoreSigned",
+      "keyPath": "/etc/pki/containers/ucore-nas.pub",
+      "signedIdentity": {"type": "matchRepository"}
+    }]' /etc/containers/policy.json > "$POLICY_TMP"
+install -m 0644 "$POLICY_TMP" /etc/containers/policy.json
+
 ### Install packages
 dnf5 install -y tmux targetcli vim tree
 

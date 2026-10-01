@@ -171,7 +171,9 @@ jobs:
         run: |
           IMAGE_FULL="${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}"
           for tag in ${{ steps.metadata.outputs.tags }}; do
-            cosign sign -y --key env://COSIGN_PRIVATE_KEY $IMAGE_FULL:$tag
+            # Legacy (.sig tag) format: podman/bootc can't verify cosign v3's new bundle format yet
+            cosign sign -y --new-bundle-format=false --use-signing-config=false \
+              --key env://COSIGN_PRIVATE_KEY $IMAGE_FULL:$tag
           done
         env:
           TAGS: ${{ steps.push.outputs.digest }}

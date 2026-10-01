@@ -2,6 +2,7 @@
 FROM scratch AS ctx
 COPY build_files /
 COPY system_files /system_files
+COPY cosign.pub /system_files/etc/pki/containers/ucore-nas.pub
 
 # Base Image
 FROM ghcr.io/ublue-os/ucore-hci:stable
