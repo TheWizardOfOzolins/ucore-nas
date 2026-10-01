@@ -5,7 +5,7 @@ on:
     branches:
       - main
   schedule:
-    - cron: '1 0 1-7 * 0'  # 00:01 on the first Sunday of each month
+    - cron: '30 6 * * *'  # 06:30 UTC daily, to pick up base image updates
   push:
     branches:
       - main
