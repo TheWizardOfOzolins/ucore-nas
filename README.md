@@ -1,15 +1,24 @@
 # ucore-nas
 
-A custom [uCore](https://github.com/ublue-os/ucore) image (based on `ucore-hci:stable`) for a home NAS. It adds iSCSI target support and [Materia](https://github.com/stryan/materia) for GitOps-managed Quadlets.
+A custom [uCore](https://github.com/ublue-os/ucore) image for a home NAS. It adds iSCSI target support and [Materia](https://github.com/stryan/materia) for GitOps-managed Quadlets.
+
+## Variants
+
+| Image | Base | Notes |
+| --- | --- | --- |
+| `ghcr.io/thewizardofozolins/ucore-nas` | `ucore-hci:stable` | Includes ZFS, Cockpit, libvirt, etc. from `ucore-hci`, plus the iSCSI target |
+| `ghcr.io/thewizardofozolins/ucore-nas-minimal` | `ucore-minimal:stable` | No ZFS, Cockpit, virtualization or iSCSI target |
+
+Both are built from the same `Containerfile` (selected with the `VARIANT` build arg, `hci` or `minimal`) and are signed with the same key. Swap `ucore-nas` for `ucore-nas-minimal` in the commands below to use the minimal variant.
 
 ## What's included
 
-On top of `ucore-hci` (which already provides ZFS, Cockpit, libvirt, etc.):
+On top of the base image:
 
 | Addition | Details |
 | --- | --- |
-| Packages | `targetcli`, `tmux`, `vim`, `tree` |
-| iSCSI | `iscsid` and `target` enabled at boot |
+| Packages | `tmux`, `vim`, `tree` (plus `targetcli` on hci) |
+| iSCSI (hci only) | `iscsid` and `target` enabled at boot |
 | Podman | `podman.socket` enabled |
 | Materia | `/usr/bin/materia` plus `materia-update.timer` (runs every 5 min). See [Materia setup](#materia-setup) |
 | Signature policy | The host only accepts updates to this image that are signed with [`cosign.pub`](cosign.pub) |
@@ -69,25 +78,31 @@ Files in `/etc` persist across image updates. They can also be supplied via Buta
 
 ## Build
 
-- **CI:** [`build.yml`](.github/workflows/build.yml) builds daily (06:30 UTC), on pushes to `main`, and on PRs. Images from `main` are pushed to GHCR as `latest`, `latest.YYYYMMDD` and `YYYYMMDD`, then signed with cosign.
-- **Dependencies:** [Renovate](.github/renovate.json5) updates GitHub Actions and the Materia version in `build_files/build.sh`. Materia bump PRs fail the build until the `MATERIA_SHA256` values are updated to match the new release.
+- **CI:** [`build.yml`](.github/workflows/build.yml) builds both variants daily (06:30 UTC), on pushes to `main`, and on PRs. Images from `main` are pushed to GHCR as `latest`, `latest.YYYYMMDD` and `YYYYMMDD`, then signed with cosign.
+- **Dependencies:** [Renovate](.github/renovate.json5) updates GitHub Actions and the Materia version in `build_files/common/30-materia.sh`. Materia bump PRs fail the build until the `MATERIA_SHA256` values are updated to match the new release.
 - **Layout:**
   - `Containerfile` – base image and build entrypoint
-  - `build_files/build.sh` – packages, services and downloads
-  - `system_files/` – files copied as-is into the image root (systemd units, configs, signing policy)
+  - `build_files/build.sh` – orchestrator: applies the `common` layer, then the `${VARIANT}` layer
+  - `build_files/common/*.sh` – build steps for every image (signing policy, packages, Materia)
+  - `build_files/hci/*.sh`, `build_files/minimal/*.sh` – build steps for one image only (e.g. iSCSI on hci)
+  - `system_files/common/` – files copied as-is into every image root (systemd units, configs)
+  - `system_files/hci/`, `system_files/minimal/` – files copied into that image only
   - `disk_config/` – bootc-image-builder configs for disk images
+
+  Scripts in each layer run in name order, so prefix them with a number (`10-`, `20-`, …). To add something to every image, drop a script or file under `common/`; to add it to one image, put it under that variant's folder.
 
 ### Building locally
 
 ```bash
 just build              # builds localhost/ucore-nas:latest with podman
+VARIANT=minimal just build ucore-nas-minimal
 just build-qcow2        # VM disk image from the local build
 just run-vm-qcow2       # boot it in a VM
 ```
 
 ## Disk images
 
-[`build-disk.yml`](.github/workflows/build-disk.yml) (manual dispatch) builds a qcow2 and an Anaconda installer ISO from the published image. The ISO installs and then runs `bootc switch` to `ghcr.io/thewizardofozolins/ucore-nas:latest`. Afterwards, do step 2 of [Installing](#installing--switching-to-this-image) to enforce signatures.
+[`build-disk.yml`](.github/workflows/build-disk.yml) (manual dispatch) builds a qcow2 and an Anaconda installer ISO from the published image you choose. The ISO installs and then runs `bootc switch` to that image (e.g. `ghcr.io/thewizardofozolins/ucore-nas:latest`). Afterwards, do step 2 of [Installing](#installing--switching-to-this-image) to enforce signatures.
 
 ## Verifying signatures
 

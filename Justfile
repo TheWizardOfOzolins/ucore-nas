@@ -1,5 +1,6 @@
 export image_name := env("IMAGE_NAME", "ucore-nas") # output image name, usually same as repo name, change as needed
 export default_tag := env("DEFAULT_TAG", "latest")
+export variant := env("VARIANT", "hci") # hci or minimal
 export bib_image := env("BIB_IMAGE", "ghcr.io/osbuild/bootc-image-builder:v85.0.0")
 
 alias build-vm := build-qcow2
@@ -89,7 +90,7 @@ sudoif command *args:
 build $target_image=image_name $tag=default_tag:
     #!/usr/bin/env bash
 
-    BUILD_ARGS=()
+    BUILD_ARGS=("--build-arg" "VARIANT=${variant}")
     if [[ -z "$(git status -s)" ]]; then
         BUILD_ARGS+=("--build-arg" "SHA_HEAD_SHORT=$(git rev-parse --short HEAD)")
     fi

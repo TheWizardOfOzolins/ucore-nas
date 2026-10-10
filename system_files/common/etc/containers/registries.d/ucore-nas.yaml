@@ -1,0 +1,5 @@
+docker:
+  ghcr.io/thewizardofozolins/ucore-nas:
+    use-sigstore-attachments: true
+  ghcr.io/thewizardofozolins/ucore-nas-minimal:
+    use-sigstore-attachments: true
