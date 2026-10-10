@@ -25,17 +25,20 @@ concurrency:
 
 jobs:
   build_push:
-    name: Build and push ${{ matrix.image_name }}
-    runs-on: ubuntu-24.04
+    name: Build and push ${{ matrix.image.name }} (${{ matrix.platform }})
+    # Each platform builds natively on its own runner (no QEMU); the manifest job joins them into one multi-arch tag
+    runs-on: ${{ matrix.platform == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     strategy:
       fail-fast: false
       matrix:
-        include:
+        platform: [amd64, arm64]
+        image:
           # Each entry builds Containerfile with VARIANT=<variant>: build_files/common + build_files/<variant>
-          - image_name: ucore-nas
+          # Keep the names in sync with the manifest job's matrix
+          - name: ucore-nas
             variant: hci
             description: "uCore HCI NAS image with iSCSI target and Materia"
-          - image_name: ucore-nas-minimal
+          - name: ucore-nas-minimal
             variant: minimal
             description: "Minimal uCore NAS image with Materia"
 
@@ -45,8 +48,8 @@ jobs:
       id-token: write
 
     env:
-      IMAGE_NAME: ${{ matrix.image_name }}
-      IMAGE_DESC: ${{ matrix.description }}
+      IMAGE_NAME: ${{ matrix.image.name }}
+      IMAGE_DESC: ${{ matrix.image.description }}
 
     steps:
       - name: Prepare environment
@@ -83,14 +86,9 @@ jobs:
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         id: metadata
         with:
-          # This generates all the tags for your image, you can add custom tags here too!
-          # Default tags are "$DEFAULT_TAG" and "$DEFAULT_TAG.$date".
+          # Per-platform tag only (e.g. latest-arm64); the multi-arch tags are generated in the manifest job
           tags: |
-            type=raw,value=${{ env.DEFAULT_TAG }}
-            type=raw,value=${{ env.DEFAULT_TAG }}.{{date 'YYYYMMDD'}}
-            type=raw,value={{date 'YYYYMMDD'}}
-            type=sha,enable=${{ github.event_name == 'pull_request' }}
-            type=ref,event=pr
+            type=raw,value=${{ env.DEFAULT_TAG }}-${{ matrix.platform }}
           labels: |
             io.artifacthub.package.readme-url=https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/main/README.md
             org.opencontainers.image.created=${{ steps.date.outputs.date }}
@@ -122,7 +120,7 @@ jobs:
           tags: ${{ steps.metadata.outputs.tags }}
           labels: ${{ steps.metadata.outputs.labels }}
           build-args: |
-            VARIANT=${{ matrix.variant }}
+            VARIANT=${{ matrix.image.variant }}
           oci: false
 
       # Rechunk is a script that we use on Universal Blue to make sure there isnt a single huge layer when your image gets published.
@@ -173,24 +171,105 @@ jobs:
           username: ${{ env.REGISTRY_USER }}
           password: ${{ env.REGISTRY_PASSWORD }}
 
+      - name: Export digest
+        if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        run: |
+          mkdir -p "${RUNNER_TEMP}/digests"
+          echo "${{ steps.push.outputs.digest }}" > "${RUNNER_TEMP}/digests/${{ matrix.platform }}"
+
+      - name: Upload digest
+        if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: digest-${{ env.IMAGE_NAME }}-${{ matrix.platform }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  manifest:
+    name: Publish and sign ${{ matrix.image_name }} manifest
+    needs: build_push
+    # These `if` statements are so that pull requests for your custom images do not make it publish any packages under your name without you knowing
+    if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        image_name: [ucore-nas, ucore-nas-minimal]
+
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    env:
+      IMAGE_NAME: ${{ matrix.image_name }}
+
+    steps:
+      - name: Prepare environment
+        run: |
+          # Lowercase the image uri
+          echo "IMAGE_REGISTRY=${IMAGE_REGISTRY,,}" >> ${GITHUB_ENV}
+          echo "IMAGE_NAME=${IMAGE_NAME,,}" >> ${GITHUB_ENV}
+
+      - name: Download digests
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: digest-${{ env.IMAGE_NAME }}-*
+          path: ${{ runner.temp }}/digests
+          merge-multiple: true
+
+      - name: Image Metadata
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
+        id: metadata
+        with:
+          # This generates all the tags for your image, you can add custom tags here too!
+          # Default tags are "$DEFAULT_TAG", "$DEFAULT_TAG.$date" and "$date".
+          tags: |
+            type=raw,value=${{ env.DEFAULT_TAG }}
+            type=raw,value=${{ env.DEFAULT_TAG }}.{{date 'YYYYMMDD'}}
+            type=raw,value={{date 'YYYYMMDD'}}
+          sep-tags: " "
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push multi-arch manifest
+        id: push
+        run: |
+          IMAGE_FULL="${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}"
+          buildah manifest create "${IMAGE_NAME}"
+          for platform in amd64 arm64; do
+            # Fails if a platform's digest is missing, so a partial manifest is never published
+            buildah manifest add "${IMAGE_NAME}" "docker://${IMAGE_FULL}@$(cat "${RUNNER_TEMP}/digests/${platform}")"
+          done
+          for tag in ${{ steps.metadata.outputs.tags }}; do
+            buildah manifest push --format v2s2 --digestfile "${RUNNER_TEMP}/manifest-digest" \
+              "${IMAGE_NAME}" "docker://${IMAGE_FULL}:${tag}"
+          done
+          echo "digest=$(cat "${RUNNER_TEMP}/manifest-digest")" >> "${GITHUB_OUTPUT}"
+
       # This section is optional and only needs to be enabled if you plan on distributing
       # your project for others to consume. You will need to create a public and private key
       # using Cosign and save the private key as a repository secret in Github for this workflow
       # to consume. For more details, review the image signing section of the README.
       - name: Install Cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-        if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
 
       - name: Sign container image
-        if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
         run: |
           IMAGE_FULL="${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}"
-          for tag in ${{ steps.metadata.outputs.tags }}; do
+          # Sign the manifest list and each platform image: podman/bootc verify the platform image they
+          # actually pull, cosign verify checks the list. Signing digests covers every tag pointing at them.
+          for digest in ${{ steps.push.outputs.digest }} $(cat "${RUNNER_TEMP}"/digests/*); do
             # Legacy (.sig tag) format: podman/bootc can't verify cosign v3's new bundle format yet
             cosign sign -y --new-bundle-format=false --use-signing-config=false \
-              --key env://COSIGN_PRIVATE_KEY $IMAGE_FULL:$tag
+              --key env://COSIGN_PRIVATE_KEY "${IMAGE_FULL}@${digest}"
           done
         env:
-          TAGS: ${{ steps.push.outputs.digest }}
           COSIGN_EXPERIMENTAL: false
           COSIGN_PRIVATE_KEY: ${{ secrets.SIGNING_SECRET }}
