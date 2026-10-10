@@ -9,7 +9,7 @@ A custom [uCore](https://github.com/ublue-os/ucore) image for a home NAS. It add
 | `ghcr.io/thewizardofozolins/ucore-nas` | `ucore-hci:stable` | Includes ZFS, Cockpit, libvirt, etc. from `ucore-hci`, plus the iSCSI target |
 | `ghcr.io/thewizardofozolins/ucore-nas-minimal` | `ucore-minimal:stable` | No ZFS, Cockpit, virtualization or iSCSI target |
 
-Both are built from the same `Containerfile` (selected with the `VARIANT` build arg, `hci` or `minimal`) and are signed with the same key. Swap `ucore-nas` for `ucore-nas-minimal` in the commands below to use the minimal variant.
+Both are built from the same `Containerfile` (selected with the `VARIANT` build arg, `hci` or `minimal`), are published for `linux/amd64` and `linux/arm64`, and are signed with the same key. Swap `ucore-nas` for `ucore-nas-minimal` in the commands below to use the minimal variant.
 
 ## What's included
 
@@ -78,7 +78,7 @@ Files in `/etc` persist across image updates. They can also be supplied via Buta
 
 ## Build
 
-- **CI:** [`build.yml`](.github/workflows/build.yml) builds both variants daily (06:30 UTC), on pushes to `main`, and on PRs. Images from `main` are pushed to GHCR as `latest`, `latest.YYYYMMDD` and `YYYYMMDD`, then signed with cosign.
+- **CI:** [`build.yml`](.github/workflows/build.yml) builds both variants daily (06:30 UTC), on pushes to `main`, and on PRs, each for amd64 and arm64 on native runners. Images from `main` are pushed to GHCR as multi-arch `latest`, `latest.YYYYMMDD` and `YYYYMMDD` tags (plus per-platform `latest-amd64` / `latest-arm64`), then signed with cosign. If any build fails, the multi-arch tags are left untouched for that run.
 - **Dependencies:** [Renovate](.github/renovate.json5) updates GitHub Actions and the Materia version in `build_files/common/30-materia.sh`. Materia bump PRs fail the build until the `MATERIA_SHA256` values are updated to match the new release.
 - **Layout:**
   - `Containerfile` – base image and build entrypoint
@@ -102,7 +102,7 @@ just run-vm-qcow2       # boot it in a VM
 
 ## Disk images
 
-[`build-disk.yml`](.github/workflows/build-disk.yml) (manual dispatch) builds a qcow2 and an Anaconda installer ISO from the published image you choose. The ISO installs and then runs `bootc switch` to that image (e.g. `ghcr.io/thewizardofozolins/ucore-nas:latest`). Afterwards, do step 2 of [Installing](#installing--switching-to-this-image) to enforce signatures.
+[`build-disk.yml`](.github/workflows/build-disk.yml) (manual dispatch) builds a qcow2 and an Anaconda installer ISO from the published image and platform (amd64 or arm64) you choose. The ISO installs and then runs `bootc switch` to that image (e.g. `ghcr.io/thewizardofozolins/ucore-nas:latest`). Afterwards, do step 2 of [Installing](#installing--switching-to-this-image) to enforce signatures.
 
 ## Verifying signatures
 
