@@ -8,7 +8,7 @@ COPY system_files /system_files
 COPY cosign.pub /system_files/common/etc/pki/containers/ucore-nas.pub
 
 # Base Image
-FROM ghcr.io/ublue-os/ucore-${VARIANT}:stable
+FROM ghcr.io/ublue-os/ucore-${VARIANT}:stable@sha256:bfc398580c2f04f1550efdeed89b15c8398846d3e4b28fbd6938d661a23323c7
 ARG VARIANT
 
 ## Other possible base images include:
