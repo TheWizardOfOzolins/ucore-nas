@@ -6,7 +6,7 @@ set -ouex pipefail
 install -d -m 0700 /etc/materia
 
 # renovate: datasource=github-releases depName=stryan/materia
-MATERIA_VERSION=v0.7.2
+MATERIA_VERSION=v0.8.0
 case "$(uname -m)" in
   x86_64)  MATERIA_ARCH=amd64; MATERIA_SHA256=5d039e1b0727fda93167b68aafd038220c06acd61820d267641e964f4d614da0 ;;
   aarch64) MATERIA_ARCH=arm64; MATERIA_SHA256=19192e31c9a4825bf4ef5224dea076f3a47ffbbe919c667e8a7150b16936b841 ;;
